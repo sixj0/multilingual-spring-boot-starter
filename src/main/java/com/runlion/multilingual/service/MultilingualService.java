@@ -109,5 +109,11 @@ public interface MultilingualService extends IService<Multilingual> {
     String getLanguageMessage(String enumClassName,String enumName,String message);
 
 
-
+    /**
+     * 转换枚举中的message
+     * @param eEnum
+     * @param <T>
+     * @return
+     */
+    <T extends Enum> T getMultilingualEnum(T eEnum);
 }

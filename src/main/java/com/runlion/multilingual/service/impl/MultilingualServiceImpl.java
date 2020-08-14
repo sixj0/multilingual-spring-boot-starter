@@ -29,7 +29,6 @@ import org.reflections.Reflections;
 import org.reflections.scanners.SubTypesScanner;
 import org.reflections.util.ConfigurationBuilder;
 import org.springframework.beans.BeanUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
@@ -349,6 +348,7 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
     @PostConstruct
     public void initEnumMessage(){
         Reflections reflections = new Reflections(new ConfigurationBuilder()
+                // todo 支持可配置
                 .forPackages("com")
                 .addScanners(new SubTypesScanner())
         );
@@ -450,4 +450,14 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
     }
 
 
+    @Override
+    public <T extends Enum> T getMultilingualEnum(T eEnum) {
+        Class enumClass = eEnum.getDeclaringClass();
+        String enumClassName = enumClass.getSimpleName();
+        String enumName = eEnum.name();
+        String message = (String)ReflectUtil.getFieldValue(eEnum, "message");
+        String languageMessage = this.getLanguageMessage(enumClassName, enumName, message);
+        ReflectUtil.setFieldValue(eEnum,"message",languageMessage);
+        return eEnum;
+    }
 }
