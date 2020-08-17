@@ -2,6 +2,7 @@ package com.runlion.multilingual.service.impl;
 
 import cn.hutool.core.util.EnumUtil;
 import cn.hutool.core.util.ReflectUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import cn.hutool.poi.excel.ExcelReader;
 import cn.hutool.poi.excel.ExcelUtil;
@@ -21,6 +22,7 @@ import com.runlion.multilingual.enums.MultilingualClientTypeEnum;
 import com.runlion.multilingual.exception.MultilingualException;
 import com.runlion.multilingual.mapper.MultilingualMapper;
 import com.runlion.multilingual.service.MultilingualService;
+import com.runlion.multilingual.translater.baidu.TransApi;
 import com.runlion.multilingual.utils.LanguageInfoUtil;
 import com.runlion.multilingual.utils.MultilingualJsonUtil;
 import com.runlion.multilingual.utils.MultilingualBeanUtil;
@@ -29,6 +31,7 @@ import org.reflections.Reflections;
 import org.reflections.scanners.SubTypesScanner;
 import org.reflections.util.ConfigurationBuilder;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
@@ -41,6 +44,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 /**
@@ -57,6 +61,28 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
     private static final String UNDERLINE = "_";
     private static final String REGEX_XLS = "^.+\\.(?i)(xls)$";
     private static final String REGEX_XLSX = "^.+\\.(?i)(xlsx)$";
+
+    /** 扫描异常枚举类,多个包可用逗号分割 */
+    @Value("${language.scanner.packages:com}")
+    private String packages;
+
+    /** 系统需要使用的外语，多种外语可用逗号分割 */
+    @Value("${language.system.used:en}")
+    private String systemUsed;
+
+    /** 是否启用自动翻译 */
+    @Value("${language.autoTranslate.enable:false}")
+    private Boolean enableAutoTranslate;
+
+    /** 百度翻译APP ID */
+    @Value("${baidu.translate.appId}")
+    private String appId;
+
+    /** 百度翻译密钥 */
+    @Value("${baidu.translte.securityKey}")
+    private String securityKey;
+
+
 
     @Resource
     private MultilingualMapper multilingualMapper;
@@ -170,7 +196,7 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
     public IPage listPage(MultilingualPageDTO dto) {
         // 默认值
         if(StringUtils.isEmpty(dto.getWordTargetType())){
-            dto.setWordTargetType(LanguageEnum.EN_US.getDesc());
+            dto.setWordTargetType(LanguageEnum.EN.getCode());
         }
 
         if(Objects.isNull(dto.getClientType())){
@@ -299,8 +325,9 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
         Map<String, List<String>> sourceMap = multilingualParamDto.getSourceMap();
         MultilingualClientTypeEnum multilingualClientTypeEnum = multilingualParamDto.getMultilingualClientTypeEnum();
         //所有语言类型(去除中文)
-        List<String> languageTypes = Arrays.stream(LanguageEnum.values()).filter(language -> !language.getDesc().equals(LanguageEnum.ZH_CN.getDesc()))
-                .map(LanguageEnum::getDesc).collect(Collectors.toList());
+        List<String> languageCodeList = StrUtil.split(systemUsed, ',', true, true);
+        List<String> languageTypes = languageCodeList.stream().filter(language -> !language.equals(LanguageEnum.ZH.getCode()))
+                .collect(Collectors.toList());
         List<Multilingual> multilingualList = new ArrayList<>();
         List<Multilingual> params = new ArrayList<>();
         sourceMap.forEach((key, value) -> value.forEach(source -> {
@@ -328,6 +355,33 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
             multilingualList.removeIf(multilingual -> multilingualStrs.contains(this.getString(multilingual)));
         }
         this.saveBatch(multilingualList);
+
+        // 自动百度翻译
+        if(enableAutoTranslate){
+            if(StrUtil.isBlank(appId) || StrUtil.isBlank(securityKey)){
+                throw new MultilingualException(BizMultilingualStatusEnum.BAIDU_TRANSLATE_ERROR);
+            }
+            new Thread(()->{
+                List<Multilingual> needTrans = multilingualList.stream().filter(multilingual -> LanguageEnum.getLanguageEnum(multilingual.getWordTargetType()).getBaiduEnable())
+                        .collect(Collectors.toList());
+                int count = needTrans.size();
+                // 由于百度API的并发限制，可能会漏掉，所以使用while
+                while (count != 0){
+                    for (Multilingual multilingual : multilingualList) {
+                        String type = multilingual.getWordTargetType();
+                        if(StrUtil.isBlank(multilingual.getWordTargetValue())){
+                            // 翻译
+                            TransApi baiduApi = new TransApi(appId, securityKey);
+                            String wordTargetValue = baiduApi.getTransResult(multilingual.getWordSourceValue(), "auto", type);
+                            // 将翻译后的值写入数据库
+                            multilingual.setWordTargetValue(wordTargetValue);
+                            count --;
+                        }
+                    }
+                }
+                updateBatchById(multilingualList);
+            }).start();
+        }
     }
 
     /**
@@ -347,22 +401,24 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
     @Override
     @PostConstruct
     public void initEnumMessage(){
-        Reflections reflections = new Reflections(new ConfigurationBuilder()
-                // todo 支持可配置
-                .forPackages("com")
-                .addScanners(new SubTypesScanner())
-        );
-        Set<Class<? extends AbstractLanguageRespEnum>> monitorClasses = reflections.getSubTypesOf(AbstractLanguageRespEnum.class);
-        for (Class<? extends AbstractLanguageRespEnum> m : monitorClasses) {
-            try {
-                if("com.runlion.multilingual.enums.BizMultilingualStatusEnum".equals(m.getName())){
-                    continue;
+        new Thread(()->{
+            List<String> list = StrUtil.split(packages, ',', true, true);
+            Reflections reflections = new Reflections(new ConfigurationBuilder()
+                    .forPackages(list.toArray(new String[0]))
+                    .addScanners(new SubTypesScanner())
+            );
+            Set<Class<? extends AbstractLanguageRespEnum>> monitorClasses = reflections.getSubTypesOf(AbstractLanguageRespEnum.class);
+            for (Class<? extends AbstractLanguageRespEnum> m : monitorClasses) {
+                try {
+                    if("com.runlion.multilingual.enums.BizMultilingualStatusEnum".equals(m.getName())){
+                        continue;
+                    }
+                    initEnumMessage(Class.forName(m.getName()));
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
-                initEnumMessage(Class.forName(m.getName()));
-            } catch (Exception e) {
-                e.printStackTrace();
             }
-        }
+        }).start();
     }
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -371,13 +427,13 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
             return;
         }
         String enumClassSimpleName = enumClass.getSimpleName();
-        LanguageEnum[] values = LanguageEnum.values();
-        // 同时初始化多种外语
-        for (LanguageEnum languageEnum : values) {
-            if(languageEnum.equals(LanguageEnum.ZH_CN)){
+        // 初始化配置的外语
+        List<String> languageCodeList = StrUtil.split(systemUsed, ',', true, true);
+
+        for (String languageType : languageCodeList) {
+            if(languageType.equals(LanguageEnum.ZH.getCode())){
                 continue;
             }
-            String languageType = languageEnum.getDesc();
             // 先查询数据库已有的数据，判断key是否存在saveOrUpdate
             QueryWrapper<Multilingual> multilingualQueryWrapper = new QueryWrapper<>();
             multilingualQueryWrapper.eq("word_target_type",languageType)
@@ -385,41 +441,81 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
             List<Multilingual> multilingualList = this.list(multilingualQueryWrapper);
 
             // 获取枚举类中的所有枚举
-            ArrayList<Multilingual> saveList = new ArrayList<>();
+            List<Multilingual> saveList;
             LinkedHashMap<String, Enum> enumMap = EnumUtil.getEnumMap(enumClass);
             Set<Map.Entry<String, Enum>> enumEntries = enumMap.entrySet();
-            for (Map.Entry<String, Enum> enumEntry : enumEntries) {
-                // 生成可以规则：枚举类名+“.”+枚举name
-                String key = enumClassSimpleName + SEPARATOR + enumEntry.getKey();
-                Field field = ReflectUtil.getField(enumEntry.getValue().getDeclaringClass(), "message");
-                field.setAccessible(true);
-                String message = "";
-                try {
-                    message = (String)field.get(enumEntry.getValue());
-                }catch (Exception e){
-                    e.printStackTrace();
-                }
-                // 如果key已经存在，更新操作，不存在执行新增操作
-                Multilingual multilingual = new Multilingual();
-                multilingual.setWordKey(key)
-                        .setWordSourceValue(message)
-                        .setWordTargetType(languageType)
-                        .setClientType(MultilingualClientTypeEnum.BACK_END_MSG.getCode());
-                UpdateWrapper<Multilingual> multilingualUpdateWrapper = new UpdateWrapper<>();
-                multilingualUpdateWrapper.eq("word_target_type",languageType)
-                        .eq("word_key",key);
-                long count = multilingualList.stream().filter(mul -> key.equals(mul.getWordKey())).count();
-                if(count != 0){
-                    this.update(multilingual,multilingualUpdateWrapper);
-                }else{
-                    saveList.add(multilingual);
-                }
-            }
+            ArrayList<Map.Entry<String, Enum>> entrieList = new ArrayList<>(enumEntries);
+
+            saveList = transTask(entrieList, enumClassSimpleName, languageType, multilingualList);
             if(!CollectionUtils.isEmpty(saveList)){
                 this.saveBatch(saveList);
             }
         }
     }
+
+
+    private List<Multilingual> transTask(List<Map.Entry<String, Enum>> enumEntries, String enumClassSimpleName, String languageType, List<Multilingual> multilingualList) {
+        List<Multilingual> saveList = new ArrayList<>();
+        LanguageEnum languageEnum = LanguageEnum.getLanguageEnum(languageType);
+
+        for (Map.Entry<String, Enum> enumEntry : enumEntries) {
+            // 生成可以规则：枚举类名+“.”+枚举name
+            String key = enumClassSimpleName + SEPARATOR + enumEntry.getKey();
+            Field field = ReflectUtil.getField(enumEntry.getValue().getDeclaringClass(), "message");
+            field.setAccessible(true);
+            String message = "";
+            try {
+                message = (String) field.get(enumEntry.getValue());
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            // 如果key已经存在，更新操作，不存在执行新增操作
+            Multilingual multilingual = new Multilingual();
+            multilingual.setWordKey(key)
+                    .setWordSourceValue(message)
+                    .setWordTargetType(languageType)
+                    .setClientType(MultilingualClientTypeEnum.BACK_END_MSG.getCode());
+            UpdateWrapper<Multilingual> multilingualUpdateWrapper = new UpdateWrapper<>();
+            multilingualUpdateWrapper.eq("word_target_type", languageType)
+                    .eq("word_key", key);
+            long count = multilingualList.stream().filter(mul -> key.equals(mul.getWordKey())).count();
+            if (count != 0) {
+                update(multilingual, multilingualUpdateWrapper);
+            } else {
+                String wordTargetValue = "";
+                // 自动翻译
+                if (enableAutoTranslate && languageEnum.getBaiduEnable()) {
+                    if(StrUtil.isBlank(appId) || StrUtil.isBlank(securityKey)){
+                        throw new MultilingualException(BizMultilingualStatusEnum.BAIDU_TRANSLATE_ERROR);
+                    }
+                    TransApi baiduApi = new TransApi(appId, securityKey);
+                    wordTargetValue = baiduApi.getTransResult(message, "auto", languageType);
+                }
+                multilingual.setWordTargetValue(wordTargetValue);
+                saveList.add(multilingual);
+            }
+        }
+        // 检查是否有漏掉未翻译的
+        if(enableAutoTranslate && languageEnum.getBaiduEnable()){
+            long count = saveList.stream().filter(multilingual -> StrUtil.isBlank(multilingual.getWordTargetValue())).count();
+            while (count != 0){
+                for (Multilingual multilingual : saveList) {
+                    if(StrUtil.isBlank(multilingual.getWordTargetValue())){
+                        TransApi baiduApi = new TransApi(appId, securityKey);
+                        String value = baiduApi.getTransResult(multilingual.getWordSourceValue(), "auto", languageType);
+                        multilingual.setWordTargetValue(value);
+                        count--;
+                    }
+                }
+            }
+        }
+        return saveList;
+
+
+    }
+
+
+
 
     @Override
     public String getLanguageMessage(String enumClassName, String enumName,String message) {
@@ -427,7 +523,7 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
         // 当前请求语言类型
         String lang = LanguageInfoUtil.getCurrentLanguage();
         QueryWrapper<Multilingual> multilingualQueryWrapper = new QueryWrapper<>();
-        if(!LanguageEnum.ZH_CN.getDesc().equals(lang)){
+        if(!LanguageEnum.ZH.getCode().equals(lang)){
             multilingualQueryWrapper.eq("word_key",key).eq("word_target_type",lang).eq("deleted",false);
         }else{
             multilingualQueryWrapper.eq("word_key",key).eq("deleted",false);
@@ -438,7 +534,7 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
             return message;
         }
         String wordTargetValue;
-        if(!LanguageEnum.ZH_CN.getDesc().equals(lang)){
+        if(!LanguageEnum.ZH.getCode().equals(lang)){
             wordTargetValue = multilingualList.get(0).getWordTargetValue();
         }else {
             wordTargetValue = multilingualList.get(0).getWordSourceValue();

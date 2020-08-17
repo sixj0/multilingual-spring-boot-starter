@@ -45,7 +45,7 @@ public class LanguageInfoUtil {
             languageInfo = initUserInfo();
             if(languageInfo == null){
                 // 默认语言为中文
-                languageInfo = LanguageEnum.ZH_CN.getDesc();
+                languageInfo = LanguageEnum.ZH.getCode();
             }
         }
         setLanguageInfo(languageInfo);

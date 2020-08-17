@@ -43,6 +43,8 @@ public enum BizMultilingualStatusEnum implements AbstractLanguageRespEnum {
     PROJECT_IS_ERROR(5405, "应用平台错误"),
     CLIENT_TYPE_IS_ERROR(5406, "客户端类型错误"),
     WORD_TARGET_TYPE_IS_ERROR(5407, "目标语言类型错误"),
+
+    BAIDU_TRANSLATE_ERROR(5408,"百度翻译账号异常"),
     ;
     /**
      * 响应code

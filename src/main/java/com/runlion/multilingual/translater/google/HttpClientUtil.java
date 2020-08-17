@@ -1,4 +1,4 @@
-package com.runlion.multilingual.translater;
+package com.runlion.multilingual.translater.google;
 
 import org.apache.http.HttpHost;
 import org.apache.http.client.config.RequestConfig;

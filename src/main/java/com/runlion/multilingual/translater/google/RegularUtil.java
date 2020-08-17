@@ -1,4 +1,4 @@
-package com.runlion.multilingual.translater;
+package com.runlion.multilingual.translater.google;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;

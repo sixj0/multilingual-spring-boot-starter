@@ -1,6 +1,4 @@
-package com.runlion.multilingual.translater;
-
-import cn.hutool.http.HttpUtil;
+package com.runlion.multilingual.translater.google;
 
 import java.net.InetSocketAddress;
 import java.net.Proxy;
