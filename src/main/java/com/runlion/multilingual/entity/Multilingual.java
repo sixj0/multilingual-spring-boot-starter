@@ -76,12 +76,11 @@ public class Multilingual implements Serializable {
     public Multilingual() {
     }
 
-    public Multilingual(String wordKey, String wordSourceValue, String wordTargetValue, String wordTargetType, Integer clientType, String fileTag) {
+    public Multilingual(String wordKey, String wordSourceValue, String wordTargetValue, String wordTargetType, Integer clientType) {
         this.wordKey = wordKey;
         this.wordSourceValue = wordSourceValue;
         this.wordTargetValue = wordTargetValue;
         this.wordTargetType = wordTargetType;
         this.clientType = clientType;
-        this.fileTag = fileTag;
     }
 }

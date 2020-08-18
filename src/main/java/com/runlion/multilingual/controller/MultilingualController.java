@@ -4,20 +4,16 @@
  */
 package com.runlion.multilingual.controller;
 
-import com.runlion.multilingual.dto.MultilingualPageDTO;
+import cn.hutool.poi.excel.ExcelWriter;
 import com.runlion.multilingual.enums.MultilingualClientTypeEnum;
 import com.runlion.multilingual.service.MultilingualService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
-import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpServletResponse;
 import java.io.*;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.List;
 import java.util.Objects;
 
@@ -31,11 +27,6 @@ public class MultilingualController {
     private static final String SEPARATOR = ".";
     private static final String UNDERLINE = "_";
 
-    @Value("${fileupload.file_server_host:http://192.168.173.155:8880}")
-    private String fileServerHost;
-
-    @Value("${multilingual.template.uri:/group1/M06/04/50/wKitm180oyiALCxrAAAtHQctzrk57.xlsx}")
-    private String templateUri;
     @Autowired
     private MultilingualService multilingualService;
 
@@ -46,27 +37,20 @@ public class MultilingualController {
      * @throws Exception
      */
     @GetMapping("/downloadTemplate")
-    public void downloadTemplate(HttpServletResponse response) throws Exception {
-        String fileName = "多语言配置模板.xlsx";
+    public void downloadTemplate(HttpServletResponse response,Integer clientType) throws Exception {
+        // 生成Excel
+        ExcelWriter writer = multilingualService.createExcel(clientType);
+
+        String fileName = "多语言配置.xlsx";
         fileName = new String(fileName.getBytes("UTF-8"), "ISO-8859-1");
-        URL url = new URL(fileServerHost+templateUri);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("GET");
-        conn.setConnectTimeout(5 * 1000);
-        // 通过输入流获取图片数据
-        InputStream inStream = conn.getInputStream();
-        BufferedInputStream br = new BufferedInputStream(inStream);
-        byte[] buf = new byte[1024];
-        int len ;
         response.reset();
         response.setContentType("application/x-msdownload");
         response.setHeader("Content-Disposition", "attachment; filename=" + fileName);
         OutputStream out = response.getOutputStream();
-        while ((len = br.read(buf)) > 0){
-            out.write(buf, 0, len);
-        }
-        br.close();
+        writer.flush(out);
+
         out.close();
+        writer.close();
     }
 
     /**

@@ -251,6 +251,14 @@ public enum LanguageEnum {
         return LanguageEnum.ZH;
     }
 
+    public static String getDescByCode(String code){
+        for (LanguageEnum languageEnum : LanguageEnum.values()) {
+            if(languageEnum.getCode().equals(code)){
+                return languageEnum.getLanguage();
+            }
+        }
+        return "";
+    }
     /**
      * 获取所有能被百度翻译的外语
      * @return

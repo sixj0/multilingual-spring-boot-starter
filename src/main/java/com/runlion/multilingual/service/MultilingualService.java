@@ -1,5 +1,6 @@
 package com.runlion.multilingual.service;
 
+import cn.hutool.poi.excel.ExcelWriter;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.runlion.multilingual.dto.MultilingualDTO;
@@ -10,6 +11,7 @@ import com.runlion.multilingual.vo.MultilingualVO;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * <p>
@@ -21,6 +23,22 @@ import java.util.List;
  */
 public interface MultilingualService extends IService<Multilingual> {
     /* ======================管理后台多语言配置======================== */
+
+
+    /**
+     * 导出Excel数据
+     * @param clientType
+     * @return
+     */
+    List<Map<String,Object>> createExcelData(Integer clientType);
+
+    /**
+     * 生成Excel
+     * @param clientType
+     * @return
+     */
+    ExcelWriter createExcel(Integer clientType);
+
 
     /**
      * 上传多语言配置Excel

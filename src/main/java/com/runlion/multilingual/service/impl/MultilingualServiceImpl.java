@@ -6,6 +6,8 @@ import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import cn.hutool.poi.excel.ExcelReader;
 import cn.hutool.poi.excel.ExcelUtil;
+import cn.hutool.poi.excel.ExcelWriter;
+import cn.hutool.poi.excel.StyleSet;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -27,6 +29,8 @@ import com.runlion.multilingual.utils.LanguageInfoUtil;
 import com.runlion.multilingual.utils.MultilingualJsonUtil;
 import com.runlion.multilingual.utils.MultilingualBeanUtil;
 import com.runlion.multilingual.vo.MultilingualVO;
+import org.apache.poi.ss.usermodel.HorizontalAlignment;
+import org.apache.poi.ss.usermodel.VerticalAlignment;
 import org.reflections.Reflections;
 import org.reflections.scanners.SubTypesScanner;
 import org.reflections.util.ConfigurationBuilder;
@@ -40,6 +44,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
@@ -61,6 +66,8 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
     private static final String UNDERLINE = "_";
     private static final String REGEX_XLS = "^.+\\.(?i)(xls)$";
     private static final String REGEX_XLSX = "^.+\\.(?i)(xlsx)$";
+    private static final String CLIENT_TYPE = "终端类型";
+    private static final String KEY = "key";
 
     /** 扫描异常枚举类,多个包可用逗号分割 */
     @Value("${language.scanner.packages:com}")
@@ -88,6 +95,90 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
     private MultilingualMapper multilingualMapper;
 
     @Override
+    public List<Map<String, Object>> createExcelData(Integer clientType) {
+        MultilingualClientTypeEnum clientEnum = MultilingualClientTypeEnum.getClientEnumByCode(clientType);
+        if(Objects.isNull(clientEnum)){
+            throw new MultilingualException(BizMultilingualStatusEnum.CLIENT_TYPE_IS_ERROR);
+        }
+        // 终端类型，key,中文(zh),英语(en),法语(fra),...
+        List<Map<String, Object>> rows = new ArrayList<>();
+        // 系统选用的外语
+        List<String> codeList = StrUtil.split(systemUsed, ',', true, true);
+
+        QueryWrapper<Multilingual> multilingualQueryWrapper = new QueryWrapper<>();
+        multilingualQueryWrapper
+                .eq("client_type",clientType)
+                .eq("deleted",false);
+        List<Multilingual> list = this.list(multilingualQueryWrapper);
+        // 只有表头
+        if(CollectionUtils.isEmpty(list)){
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put(CLIENT_TYPE,"");
+            row.put(KEY,"");
+            row.put(getLanguageHead(LanguageEnum.ZH.getCode()),"");
+            for (String code : codeList) {
+                row.put(getLanguageHead(code),"");
+            }
+            rows.add(row);
+            return rows;
+        }
+        Map<String, List<Multilingual>> listMap = list.stream().collect(Collectors.groupingBy(this::multilingualGruopBy));
+
+        for (Map.Entry<String, List<Multilingual>> entry : listMap.entrySet()) {
+            List<String> split = StrUtil.split(entry.getKey(), '#', true, true);
+            String key = split.get(0);
+            String zh = split.get(1);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put(CLIENT_TYPE,clientEnum.getDesc());
+            row.put(KEY,key);
+            // 中文
+            row.put(getLanguageHead(LanguageEnum.ZH.getCode()),zh);
+            // 外语
+            Map<String, String> wordTargetMap = entry.getValue().stream().collect(Collectors.toMap(Multilingual::getWordTargetType, Multilingual::getWordTargetValue));
+            for (String code : codeList) {
+                row.put(getLanguageHead(code),wordTargetMap.get(code));
+            }
+            rows.add(row);
+        }
+
+        return rows;
+    }
+
+    @Override
+    public ExcelWriter createExcel(Integer clientType) {
+        List<Map<String, Object>> rows = this.createExcelData(clientType);
+        ExcelWriter writer = ExcelUtil.getWriter(true);
+        // 写数据
+        writer.write(rows);
+        // 设置样式
+        writer.setColumnWidth(0,20);
+        int columnCount = writer.getColumnCount(0);
+        for (int i = 1; i < columnCount; i++) {
+            writer.setColumnWidth(i,50);
+        }
+        // 左对齐
+        StyleSet style = writer.getStyleSet();
+        style.setAlign(HorizontalAlignment.LEFT,VerticalAlignment.CENTER);
+
+        return writer;
+    }
+
+
+    private String getLanguageHead(String code){
+        String desc = LanguageEnum.getDescByCode(code);
+        return desc+"("+code+")";
+    }
+
+    /**
+     * 分组依据
+     * @param multilingual
+     * @return
+     */
+    private String multilingualGruopBy(Multilingual multilingual){
+        return multilingual.getWordKey()+"#"+multilingual.getWordSourceValue();
+    }
+
+    @Override
     public void uploadTemplate(MultipartFile file) {
         String fileName = file.getOriginalFilename();
         if (!fileName.matches(REGEX_XLS) && !fileName.matches(REGEX_XLSX)){
@@ -100,87 +191,64 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
             throw new MultilingualException(BizMultilingualStatusEnum.SYSTEM_ERROR);
         }
         ExcelReader reader = ExcelUtil.getReader(inputStream);
-
-        // 客户端类型
-        String clientType = objectToStr(reader.readCellValue(1, 0));
-        if(StringUtils.isEmpty(clientType)){
-            throw new MultilingualException(BizMultilingualStatusEnum.CLIENT_TYPE_IS_EMPTY);
-        }
-        MultilingualClientTypeEnum clientTypeEnum = MultilingualClientTypeEnum.getClientTypeEnum(clientType);
-        if(Objects.isNull(clientTypeEnum)){
-            throw new MultilingualException(BizMultilingualStatusEnum.CLIENT_TYPE_IS_ERROR);
-        }
-        // 目标语言类型
-        String wordTargetType = objectToStr(reader.readCellValue(1, 1));
-        if(StringUtils.isEmpty(wordTargetType)){
-            throw new MultilingualException(BizMultilingualStatusEnum.WORD_TARGET_TYPE_IS_EMPTY);
-        }
-        LanguageEnum languageEnum = LanguageEnum.getLanguageEnum(wordTargetType);
-        if(Objects.isNull(languageEnum)){
-            throw new MultilingualException(BizMultilingualStatusEnum.WORD_TARGET_TYPE_IS_ERROR);
-        }
-        // 文件标识
-        String fileTag = objectToStr(reader.readCellValue(1,2));
-        if(MultilingualClientTypeEnum.APP_ANDROID.getDesc().equals(clientType) &&
-                StringUtils.isEmpty(fileTag)){
-            throw new MultilingualException(BizMultilingualStatusEnum.FILE_TAG_IS_EMPTY);
-        }
-        // 读取内容
+        // 系统选用的外语
+        List<String> codeList = StrUtil.split(systemUsed, ',', true, true);
+        // 读数据
         List<Multilingual> multilingualList = new ArrayList<>();
-        boolean loopCondition = true;
-        for(int i = 4 ; loopCondition ;i++){
-            String wordKey = objectToStr(reader.readCellValue(0, i));
-            if(StringUtils.isEmpty(wordKey)){
-                throw new MultilingualException("上传失败：第"+(i+1)+"行key为空，请检查后重新上传");
+        List<Map<String, Object>> rows = reader.readAll();
+        for (Map<String, Object> row : rows) {
+            String clientType = objectToStr(row.get(CLIENT_TYPE));
+            MultilingualClientTypeEnum clientTypeEnum = MultilingualClientTypeEnum.getClientTypeEnum(clientType);
+            if(Objects.isNull(clientTypeEnum)){
+                throw new MultilingualException("上传失败：终端类型不正确，请检查后重新上传");
             }
-            String wordSourceValue = objectToStr(reader.readCellValue(1, i));
-            // 源语言值不能为空
-            if(StringUtils.isEmpty(wordSourceValue)){
-                throw new MultilingualException("上传失败：第"+(i+1)+"行源语言值为空，请检查后重新上传");
+            String key = objectToStr(row.get(KEY));
+            if(StringUtils.isEmpty(key)){
+                throw new MultilingualException("上传失败：key不能为空，请检查后重新上传");
             }
-            String wordTargetValue = objectToStr(reader.readCellValue(2, i));
-            Multilingual multilingual = new Multilingual(wordKey, wordSourceValue, wordTargetValue, wordTargetType, clientTypeEnum.getCode(), fileTag);
-            multilingualList.add(multilingual);
-            // 只要下一行不是空行就循环读取
-            List<Object> objects = reader.readRow(i + 1);
-            if(CollectionUtils.isEmpty(objects)){
-                loopCondition = false;
+            String zh = objectToStr(row.get(getLanguageHead(LanguageEnum.ZH.getCode())));
+            if(StringUtils.isEmpty(zh)){
+                throw new MultilingualException("上传失败：中文不能为空，请检查后重新上传");
             }
-        }
-        // key不能重复
-        List<String> distinctCollect = multilingualList.stream().map(Multilingual::getWordKey).distinct().collect(Collectors.toList());
-        if(distinctCollect.size() < multilingualList.size()){
-            throw new MultilingualException("上传失败：key不能重复，请检查后重新上传");
+            for (String code : codeList) {
+                String targetValue = objectToStr(row.get(getLanguageHead(code)));
+                Multilingual multilingual = new Multilingual(key, zh, targetValue, code, clientTypeEnum.getCode());
+                multilingualList.add(multilingual);
+            }
         }
 
         // 查询原有数据，根据key是否存在判断新增或者修改
         QueryWrapper<Multilingual> multilingualQueryWrapper = new QueryWrapper<>();
-        multilingualQueryWrapper
-                .eq("client_type",clientType)
-                .eq("word_target_type",wordTargetType)
-                .eq("deleted",false);
-        if(!StringUtils.isEmpty(fileTag)){
-            multilingualQueryWrapper.eq("file_tag",fileTag);
-        }
+        multilingualQueryWrapper.eq("deleted",false);
         List<Multilingual> multilingualDbList = this.list(multilingualQueryWrapper);
-        List<String> keyList = multilingualDbList.stream().map(Multilingual::getWordKey).collect(Collectors.toList());
-
-        // 修改条件
-        UpdateWrapper<Multilingual> multilingualUpdateWrapper = new UpdateWrapper<>();
-        multilingualUpdateWrapper
-                .eq("client_type",clientType)
-                .eq("word_target_type",wordTargetType);
-        List<Multilingual> saveList = new ArrayList<>();
+        Map<String, Multilingual> keyMap = new HashMap<>();
+        if (!CollectionUtils.isEmpty(multilingualDbList)) {
+            //将多语言数据组合成string用以对比
+             keyMap = multilingualDbList.parallelStream().collect(Collectors.toMap(this::getString, multilingual -> multilingual));
+        }
 
         // 新增或修改
+        List<Multilingual> saveList = new ArrayList<>();
         for (Multilingual multilingual : multilingualList) {
-            if(keyList.contains(multilingual.getWordKey())){
-                multilingualUpdateWrapper.eq("word_key",multilingual.getWordKey());
-                this.update(multilingual,multilingualUpdateWrapper);
+            // 数据库中已经存在
+            if(keyMap.containsKey(getString(multilingual))){
+                Multilingual oldMultilingual = keyMap.get(getString(multilingual));
+                if(multilingual.getWordTargetValue().equals(oldMultilingual.getWordTargetValue())){
+                    continue;
+                }
+                // 修改
+                UpdateWrapper<Multilingual> updateWrapper = new UpdateWrapper<>();
+                updateWrapper
+                        .eq("client_type",multilingual.getClientType())
+                        .eq("word_target_type",multilingual.getWordTargetType())
+                        .eq("word_key",multilingual.getWordKey())
+                        .eq("word_source_value",multilingual.getWordSourceValue());
+                this.update(multilingual,updateWrapper);
             }else{
                 saveList.add(multilingual);
             }
         }
+
         if(!CollectionUtils.isEmpty(saveList)){
             this.saveBatch(saveList);
         }

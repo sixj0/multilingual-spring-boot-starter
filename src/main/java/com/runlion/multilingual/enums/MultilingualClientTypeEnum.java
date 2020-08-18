@@ -54,4 +54,13 @@ public enum MultilingualClientTypeEnum {
         }
         return null;
     }
+
+    public static MultilingualClientTypeEnum getClientEnumByCode(Integer code){
+        for (MultilingualClientTypeEnum clientTypeEnum : MultilingualClientTypeEnum.values()) {
+            if(clientTypeEnum.getCode().equals(code)){
+                return clientTypeEnum;
+            }
+        }
+        return null;
+    }
 }
