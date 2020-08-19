@@ -83,7 +83,7 @@ public interface MultilingualService extends IService<Multilingual> {
      * @param languageType
      * @return
      */
-    List<String> downloadLangPackage(Integer clientType, String languageType);
+    List<String> downloadLangPackage(String clientType, String languageType);
 
 
 

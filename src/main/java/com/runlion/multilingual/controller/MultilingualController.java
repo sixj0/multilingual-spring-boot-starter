@@ -58,7 +58,7 @@ public class MultilingualController {
      * @param file
      */
     @PostMapping(value = "/uploadTemplate", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public void uploadTemplate(@RequestPart("file") MultipartFile file) {
+    public void uploadTemplate(@RequestParam("file") MultipartFile file) {
         multilingualService.uploadTemplate(file);
     }
 
@@ -69,17 +69,17 @@ public class MultilingualController {
      */
     @GetMapping("/downloadLangPackage")
     public void downloadLangPackage(HttpServletResponse response,
-                                    @RequestParam("clientType") Integer clientType,
+                                    @RequestParam("clientType") String clientType,
                                     @RequestParam("languageType") String languageType){
         List<String> contentList = multilingualService.downloadLangPackage(clientType, languageType);
         String fileName = clientType + UNDERLINE + languageType + SEPARATOR ;
-        if(MultilingualClientTypeEnum.FRONT.getCode().equals(clientType)){
+        if(MultilingualClientTypeEnum.FRONT.getDesc().equals(clientType)){
             fileName = fileName + "json";
         }
-        if(MultilingualClientTypeEnum.APP_IOS.getCode().equals(clientType)){
+        if(MultilingualClientTypeEnum.APP_IOS.getDesc().equals(clientType)){
             fileName = fileName + "txt";
         }
-        if(MultilingualClientTypeEnum.APP_ANDROID.getCode().equals(clientType)){
+        if(MultilingualClientTypeEnum.APP_ANDROID.getDesc().equals(clientType)){
             fileName = fileName + "xml";
         }
         try {

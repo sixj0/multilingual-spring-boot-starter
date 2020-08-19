@@ -96,14 +96,16 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
 
     @Override
     public List<Map<String, Object>> createExcelData(Integer clientType) {
-        MultilingualClientTypeEnum clientEnum = MultilingualClientTypeEnum.getClientEnumByCode(clientType);
-        if(Objects.isNull(clientEnum)){
-            throw new MultilingualException(BizMultilingualStatusEnum.CLIENT_TYPE_IS_ERROR);
-        }
         // 终端类型，key,中文(zh),英语(en),法语(fra),...
         List<Map<String, Object>> rows = new ArrayList<>();
         // 系统选用的外语
         List<String> codeList = StrUtil.split(systemUsed, ',', true, true);
+
+        MultilingualClientTypeEnum clientEnum = MultilingualClientTypeEnum.getClientEnumByCode(clientType);
+        if(Objects.isNull(clientEnum)){
+            rows.add(createEmptyRow(codeList));
+            return rows;
+        }
 
         QueryWrapper<Multilingual> multilingualQueryWrapper = new QueryWrapper<>();
         multilingualQueryWrapper
@@ -112,14 +114,7 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
         List<Multilingual> list = this.list(multilingualQueryWrapper);
         // 只有表头
         if(CollectionUtils.isEmpty(list)){
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put(CLIENT_TYPE,"");
-            row.put(KEY,"");
-            row.put(getLanguageHead(LanguageEnum.ZH.getCode()),"");
-            for (String code : codeList) {
-                row.put(getLanguageHead(code),"");
-            }
-            rows.add(row);
+            rows.add(createEmptyRow(codeList));
             return rows;
         }
         Map<String, List<Multilingual>> listMap = list.stream().collect(Collectors.groupingBy(this::multilingualGruopBy));
@@ -142,6 +137,22 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
         }
 
         return rows;
+    }
+
+    /**
+     * 空表（只有表头）
+     * @param codeList
+     * @return
+     */
+    private Map<String, Object> createEmptyRow(List<String> codeList){
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put(CLIENT_TYPE,"");
+        row.put(KEY,"");
+        row.put(getLanguageHead(LanguageEnum.ZH.getCode()),"");
+        for (String code : codeList) {
+            row.put(getLanguageHead(code),"");
+        }
+        return row;
     }
 
     @Override
@@ -251,6 +262,42 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
 
         if(!CollectionUtils.isEmpty(saveList)){
             this.saveBatch(saveList);
+            // 自动百度翻译
+            autoTranslate(saveList);
+        }
+    }
+
+    /**
+     * 自动翻译
+     * @param list
+     */
+    private void autoTranslate(List<Multilingual> list){
+        if(enableAutoTranslate){
+            if(StrUtil.isBlank(appId) || StrUtil.isBlank(securityKey)){
+                throw new MultilingualException(BizMultilingualStatusEnum.BAIDU_TRANSLATE_ERROR);
+            }
+            new Thread(()->{
+                List<Multilingual> needTrans = list.stream().filter(multilingual -> LanguageEnum.getLanguageEnum(multilingual.getWordTargetType()).getBaiduEnable())
+                        .collect(Collectors.toList());
+                int count = needTrans.size();
+                // 由于百度API的并发限制，可能会漏掉，所以使用while
+                while (count != 0){
+                    for (Multilingual multilingual : list) {
+                        String type = multilingual.getWordTargetType();
+                        if(StrUtil.isBlank(multilingual.getWordTargetValue())){
+                            // 翻译
+                            TransApi baiduApi = new TransApi(appId, securityKey);
+                            String wordTargetValue = baiduApi.getTransResult(multilingual.getWordSourceValue(), "auto", type);
+                            // 将翻译后的值写入数据库
+                            multilingual.setWordTargetValue(wordTargetValue);
+                            count --;
+                        }
+                    }
+                }
+                if(!CollectionUtils.isEmpty(list)){
+                    updateBatchById(list);
+                }
+            }).start();
         }
     }
 
@@ -321,15 +368,21 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
     }
 
     @Override
-    public List<String> downloadLangPackage(Integer clientType, String languageType) {
+    public List<String> downloadLangPackage(String clientType, String languageType) {
+        MultilingualClientTypeEnum clientTypeEnum = MultilingualClientTypeEnum.getClientTypeEnum(clientType);
+        if(Objects.isNull(clientTypeEnum)){
+            return new ArrayList<>();
+        }
+        Integer clientCode = clientTypeEnum.getCode();
+
         QueryWrapper<Multilingual> multilingualQueryWrapper = new QueryWrapper<>();
         multilingualQueryWrapper.eq("word_target_type",languageType)
-                .eq("client_type",clientType)
+                .eq("client_type",clientCode)
                 .eq("deleted",false);
         List<Multilingual> multilingualList = this.list(multilingualQueryWrapper);
         List<String> resultList = new ArrayList<>();
         // 前端:JSON格式文件
-        if(MultilingualClientTypeEnum.FRONT.getCode().equals(clientType)){
+        if(MultilingualClientTypeEnum.FRONT.getCode().equals(clientCode)){
             HashMap<String, String> map = new HashMap<>(16);
             for (Multilingual multilingual : multilingualList) {
                 // 如果没有对应的目标语言，依然返回中文
@@ -342,7 +395,7 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
             resultList.add(formatJson);
         }
         // Android：<string name="key">value</string>
-        if(MultilingualClientTypeEnum.APP_ANDROID.getCode().equals(clientType)){
+        if(MultilingualClientTypeEnum.APP_ANDROID.getCode().equals(clientCode)){
             // 按照文件标识排序，按顺序导出
             multilingualList.sort(Comparator.comparing(Multilingual::getFileTag));
             for (Multilingual multilingual : multilingualList) {
@@ -353,7 +406,7 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
             }
         }
         // IOS：key = "value";
-        if(MultilingualClientTypeEnum.APP_IOS.getCode().equals(clientType)){
+        if(MultilingualClientTypeEnum.APP_IOS.getCode().equals(clientCode)){
             for (Multilingual multilingual : multilingualList) {
                 // 如果没有对应的目标语言，依然返回中文
                 String wordTargetValue = multilingual.getWordTargetValue();
@@ -425,33 +478,7 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
         this.saveBatch(multilingualList);
 
         // 自动百度翻译
-        if(enableAutoTranslate){
-            if(StrUtil.isBlank(appId) || StrUtil.isBlank(securityKey)){
-                throw new MultilingualException(BizMultilingualStatusEnum.BAIDU_TRANSLATE_ERROR);
-            }
-            new Thread(()->{
-                List<Multilingual> needTrans = multilingualList.stream().filter(multilingual -> LanguageEnum.getLanguageEnum(multilingual.getWordTargetType()).getBaiduEnable())
-                        .collect(Collectors.toList());
-                int count = needTrans.size();
-                // 由于百度API的并发限制，可能会漏掉，所以使用while
-                while (count != 0){
-                    for (Multilingual multilingual : multilingualList) {
-                        String type = multilingual.getWordTargetType();
-                        if(StrUtil.isBlank(multilingual.getWordTargetValue())){
-                            // 翻译
-                            TransApi baiduApi = new TransApi(appId, securityKey);
-                            String wordTargetValue = baiduApi.getTransResult(multilingual.getWordSourceValue(), "auto", type);
-                            // 将翻译后的值写入数据库
-                            multilingual.setWordTargetValue(wordTargetValue);
-                            count --;
-                        }
-                    }
-                }
-                if(!CollectionUtils.isEmpty(multilingualList)){
-                    updateBatchById(multilingualList);
-                }
-            }).start();
-        }
+        autoTranslate(multilingualList);
     }
 
     /**
