@@ -1,5 +1,7 @@
 package com.runlion.multilingual.annotation;
 
+import com.runlion.multilingual.common.DefaultDataGetter;
+import com.runlion.multilingual.common.MultiDataGetter;
 import com.runlion.multilingual.enums.MultilingualClientTypeEnum;
 
 import java.lang.annotation.*;
@@ -22,4 +24,10 @@ public @interface MultiLanguageMethod {
      * @return multilingualClientTypeEnum
      */
     MultilingualClientTypeEnum multilingualClientTypeEnum() default MultilingualClientTypeEnum.BACK_END_ENUM;
+
+    /**
+     * 获取复杂类型返回值中需要翻译的数据
+     * @return
+     */
+     Class multiDataGetter() default DefaultDataGetter.class;
 }

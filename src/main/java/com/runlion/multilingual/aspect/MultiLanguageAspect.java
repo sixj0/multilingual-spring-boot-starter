@@ -3,6 +3,7 @@ package com.runlion.multilingual.aspect;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.runlion.multilingual.annotation.MultiLanguage;
 import com.runlion.multilingual.annotation.MultiLanguageMethod;
+import com.runlion.multilingual.common.MultiDataGetter;
 import com.runlion.multilingual.dto.MultilingualDTO;
 import com.runlion.multilingual.dto.MultilingualParamDto;
 import com.runlion.multilingual.enums.MultilingualClientTypeEnum;
@@ -38,20 +39,26 @@ public class MultiLanguageAspect {
     @Around("@annotation(multiLanguageMethod)")
     public Object doAround(ProceedingJoinPoint joinPoint, MultiLanguageMethod multiLanguageMethod) throws Throwable {
         //获取method对象
-        Object object;
+        Object result;
         //获得返回结果
-        object = joinPoint.proceed();
+        result = joinPoint.proceed();
         //多语言客户端类型枚举
         MultilingualClientTypeEnum multilingualClientTypeEnum = multiLanguageMethod.multilingualClientTypeEnum();
-        if (object instanceof IPage) {
-            IPage page = (IPage) object;
+        // 获取需要翻译的数据
+        Class multiDataGetterClass = multiLanguageMethod.multiDataGetter();
+        Object o = multiDataGetterClass.newInstance();
+        assert o instanceof MultiDataGetter;
+        MultiDataGetter multiDataGetter = (MultiDataGetter) o;
+
+        /*if (result instanceof IPage) {
+            IPage page = (IPage) result;
             List list = page.getRecords();
             if (CollectionUtils.isEmpty(list)) {
-                return object;
+                return result;
             }
             //转换数据
-            this.conversionData(multilingualClientTypeEnum, list);
-        }
+            this.conversionData(multilingualClientTypeEnum,multiDataGetter, list);
+        }*/
         /// todo 动态获取数据
         /*else if (object instanceof LiteRestResponse){
             if (BaseRespStatusEnum.SUCCESS.getStatus() == ((LiteRestResponse) object).getStatus()) {
@@ -62,12 +69,12 @@ public class MultiLanguageAspect {
                 }
             }
         } */
-        else {
-            //转换数据
-            this.conversionData(multilingualClientTypeEnum, object);
-        }
 
-        return object;
+        //转换数据
+        this.conversionData(multilingualClientTypeEnum,multiDataGetter, result);
+
+
+        return result;
     }
 
     /**
@@ -75,17 +82,17 @@ public class MultiLanguageAspect {
      *
      * @author wangyiting created 2020/1/10
      * @param multilingualClientTypeEnum 多语言客户端类型枚举
-     * @param object 数据对象
+     * @param result 返回值数据对象
      */
-    private void conversionData(MultilingualClientTypeEnum multilingualClientTypeEnum, Object object) {
-        List list;
+    private void conversionData(MultilingualClientTypeEnum multilingualClientTypeEnum, MultiDataGetter multiDataGetter,Object result) {
+        Object data = multiDataGetter.getData(result);
         //多语言数据
         List<MultilingualVO> multilingualVOS;
         //查询条件，参数为wordKey+"#"+wordSourceValue
         List<String> conditions = new ArrayList<>();
-        if (object instanceof List) {
-            list = (List) object;
-            for (Object o : list) {
+        if (data instanceof Collection) {
+
+            for (Object o : (Collection)data) {
                 //收集条件
                 this.collectionConditions(conditions, o);
             }
@@ -102,13 +109,13 @@ public class MultiLanguageAspect {
                 this.initializeMultilingualData(multilingualClientTypeEnum, conditions);
                 return;
             }
-            for (Object o : list) {
+            for (Object o : (Collection)data) {
                 //设置多语言数据
                 this.settingUpMultilingualData(multilingualVOS, o);
             }
         } else {
             //收集条件
-            this.collectionConditions(conditions, object);
+            this.collectionConditions(conditions, result);
             //没有需要翻译的数据
             if (CollectionUtils.isEmpty(conditions)) {
                 return;
@@ -123,7 +130,7 @@ public class MultiLanguageAspect {
                 return;
             }
             //设置多语言数据
-            this.settingUpMultilingualData(multilingualVOS, object);
+            this.settingUpMultilingualData(multilingualVOS, result);
         }
         //保留没有生成过多语言数据的数据
         this.deleteAlreadyExists(conditions, multilingualVOS);

@@ -447,7 +447,9 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
                         }
                     }
                 }
-                updateBatchById(multilingualList);
+                if(!CollectionUtils.isEmpty(multilingualList)){
+                    updateBatchById(multilingualList);
+                }
             }).start();
         }
     }
