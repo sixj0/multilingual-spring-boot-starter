@@ -50,26 +50,6 @@ public class MultiLanguageAspect {
         assert o instanceof MultiDataGetter;
         MultiDataGetter multiDataGetter = (MultiDataGetter) o;
 
-        /*if (result instanceof IPage) {
-            IPage page = (IPage) result;
-            List list = page.getRecords();
-            if (CollectionUtils.isEmpty(list)) {
-                return result;
-            }
-            //转换数据
-            this.conversionData(multilingualClientTypeEnum,multiDataGetter, list);
-        }*/
-        /// todo 动态获取数据
-        /*else if (object instanceof LiteRestResponse){
-            if (BaseRespStatusEnum.SUCCESS.getStatus() == ((LiteRestResponse) object).getStatus()) {
-                Object data = ((LiteRestResponse) object).getData();
-                if (!Objects.isNull(data)) {
-                    //转换数据
-                    this.conversionData(applicationEnum, multilingualClientTypeEnum, data);
-                }
-            }
-        } */
-
         //转换数据
         this.conversionData(multilingualClientTypeEnum,multiDataGetter, result);
 
