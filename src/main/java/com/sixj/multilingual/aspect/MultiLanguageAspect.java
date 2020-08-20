@@ -191,7 +191,7 @@ public class MultiLanguageAspect {
                         for (MultilingualVO multilingualVO : multilingualVOS) {
                             //对应上key且存在目标语言数据时设置
                             if ((multilingualVO.getWordKey() + "#" + multilingualVO.getWordSourceValue())
-                                    .equals(StringUtils.isEmpty(voHeader) ? className : voHeader + "." + field.getName() + "#" + field.get(o))
+                                    .equals((StringUtils.isEmpty(voHeader) ? className : voHeader) + "." + field.getName() + "#" + field.get(o))
                                     && !StringUtils.isEmpty(multilingualVO.getWordTargetValue())) {
                                 field.set(o, multilingualVO.getWordTargetValue());
                             }
@@ -236,11 +236,11 @@ public class MultiLanguageAspect {
                         if (object instanceof String) {
                             if (!StringUtils.isEmpty(object)) {
                                 //收集需要翻译的参数信息
-                                conditions.add(StringUtils.isEmpty(voHeader) ? className : voHeader + "." + field.getName() + "#" + object);
+                                conditions.add((StringUtils.isEmpty(voHeader) ? className : voHeader) + "." + field.getName() + "#" + object);
                             }
                         } else {
                             //收集需要翻译的参数信息
-                            conditions.add(StringUtils.isEmpty(voHeader) ? className : voHeader + "." + field.getName() + "#" + object);
+                            conditions.add((StringUtils.isEmpty(voHeader) ? className : voHeader) + "." + field.getName() + "#" + object);
                         }
                     } catch (IllegalAccessException e) {
                         e.printStackTrace();
