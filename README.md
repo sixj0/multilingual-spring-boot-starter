@@ -32,7 +32,7 @@ CREATE TABLE `multilingual` (
 
 ```xml
 <dependency>
-  <groupId>com.runlion</groupId>
+  <groupId>com.sixj</groupId>
   <artifactId>multilingual-spring-boot-starter</artifactId>
   <version>{最新Release版本}</version>
 </dependency>

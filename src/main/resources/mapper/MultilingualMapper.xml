@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.runlion.multilingual.mapper.MultilingualMapper">
+<mapper namespace="com.sixj.multilingual.mapper.MultilingualMapper">
 
     <!-- 根据查询条件查询多语言数据 -->
-    <select id="listMultilingual" resultType="com.runlion.multilingual.entity.Multilingual">
+    <select id="listMultilingual" resultType="com.sixj.multilingual.entity.Multilingual">
         select * from multilingual t_m where  t_m.client_type = #{clientType} and t_m.word_target_type = #{languageType}
         and (word_key, word_source_value) in
         <foreach collection="condition" index="index" close=")" open="(" separator="," item="item">
@@ -13,7 +13,7 @@
 
 
     <!-- 查询符合条件的多语言数据 -->
-    <select id="listMultilingualForAllLanguageTypes" resultType="com.runlion.multilingual.entity.Multilingual">
+    <select id="listMultilingualForAllLanguageTypes" resultType="com.sixj.multilingual.entity.Multilingual">
         select * from multilingual t_m where t_m.client_type = #{clientType}
         and (word_key, word_source_value) in
         <foreach collection="condition" index="index" close=")" open="(" separator="," item="item">
