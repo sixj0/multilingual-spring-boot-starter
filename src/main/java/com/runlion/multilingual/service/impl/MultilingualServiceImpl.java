@@ -13,6 +13,7 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.runlion.multilingual.annotation.MultiLanguageEnum;
 import com.runlion.multilingual.dto.MultilingualDTO;
 import com.runlion.multilingual.dto.MultilingualPageDTO;
 import com.runlion.multilingual.dto.MultilingualParamDto;
@@ -33,6 +34,7 @@ import org.apache.poi.ss.usermodel.HorizontalAlignment;
 import org.apache.poi.ss.usermodel.VerticalAlignment;
 import org.reflections.Reflections;
 import org.reflections.scanners.SubTypesScanner;
+import org.reflections.scanners.TypeAnnotationsScanner;
 import org.reflections.util.ConfigurationBuilder;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Value;
@@ -502,16 +504,13 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
             List<String> list = StrUtil.split(packages, ',', true, true);
             Reflections reflections = new Reflections(new ConfigurationBuilder()
                     .forPackages(list.toArray(new String[0]))
-                    .addScanners(new SubTypesScanner())
+                    .addScanners(new TypeAnnotationsScanner())
             );
-            Set<Class<? extends AbstractLanguageRespEnum>> monitorClasses = reflections.getSubTypesOf(AbstractLanguageRespEnum.class);
-            for (Class<? extends AbstractLanguageRespEnum> m : monitorClasses) {
+            Set<Class<?>> typesAnnotated = reflections.getTypesAnnotatedWith(MultiLanguageEnum.class);
+            for (Class<?> aClass : typesAnnotated) {
                 try {
-                    if("com.runlion.multilingual.enums.BizMultilingualStatusEnum".equals(m.getName())){
-                        continue;
-                    }
-                    initEnumMessage(Class.forName(m.getName()));
-                } catch (Exception e) {
+                    initEnumMessage(Class.forName(aClass.getName()));
+                } catch (ClassNotFoundException e) {
                     e.printStackTrace();
                 }
             }
@@ -558,7 +557,12 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
         for (Map.Entry<String, Enum> enumEntry : enumEntries) {
             // 生成可以规则：枚举类名+“.”+枚举name
             String key = enumClassSimpleName + SEPARATOR + enumEntry.getKey();
-            Field field = ReflectUtil.getField(enumEntry.getValue().getDeclaringClass(), "message");
+
+            Enum anEnum = enumEntry.getValue();
+            Class<? extends Enum> anEnumClass = anEnum.getClass();
+            assert anEnumClass.isAnnotationPresent(MultiLanguageEnum.class);
+            MultiLanguageEnum annotation = anEnumClass.getAnnotation(MultiLanguageEnum.class);
+            Field field = ReflectUtil.getField(anEnum.getDeclaringClass(), annotation.fieldName());
             field.setAccessible(true);
             String message = "";
             try {
@@ -648,9 +652,13 @@ public class MultilingualServiceImpl extends ServiceImpl<MultilingualMapper, Mul
         Class enumClass = eEnum.getDeclaringClass();
         String enumClassName = enumClass.getSimpleName();
         String enumName = eEnum.name();
-        String message = (String)ReflectUtil.getFieldValue(eEnum, "message");
+        Class<? extends Enum> anEnumClass = eEnum.getClass();
+        assert anEnumClass.isAnnotationPresent(MultiLanguageEnum.class);
+        MultiLanguageEnum annotation = anEnumClass.getAnnotation(MultiLanguageEnum.class);
+        String fieldName = annotation.fieldName();
+        String message = (String)ReflectUtil.getFieldValue(eEnum, fieldName);
         String languageMessage = this.getLanguageMessage(enumClassName, enumName, message);
-        ReflectUtil.setFieldValue(eEnum,"message",languageMessage);
+        ReflectUtil.setFieldValue(eEnum,fieldName,languageMessage);
         return eEnum;
     }
 }

@@ -14,7 +14,7 @@ import lombok.Getter;
  */
 @Getter
 @AllArgsConstructor
-public enum BizMultilingualStatusEnum implements AbstractLanguageRespEnum {
+public enum BizMultilingualStatusEnum{
     /**
      * 200：操作成功
      */
@@ -70,9 +70,4 @@ public enum BizMultilingualStatusEnum implements AbstractLanguageRespEnum {
         return SYSTEM_ERROR;
     }
 
-
-    @Override
-    public String getClassSimpleName() {
-        return this.getDeclaringClass().getSimpleName();
-    }
 }

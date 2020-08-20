@@ -58,7 +58,50 @@ baidu.translate.appId = *************
 baidu.translte.securityKey = ****************
 ```
 
-### 三、生成前端、移动端语言包
+#### 2.5 请求头添加Language标示
+
+前端在请求接口的时候，需要在headers中添加一个语言标示，key为`Language`,value为《语言编码对照表》中的语言编码，后端才能根据语言标示，切换到相对应的语言返回给前端。如果不传的话，默认为中文（zh）。
+
+### 三、后端抛出的异常国际化
+
+3.1 异常枚举实现`AbstractLanguageRespEnum`接口
+
+例如：
+
+```java
+@Getter
+@AllArgsConstructor
+public enum RespStatusEnum implements AbstractLanguageRespEnum {
+
+    SUCCESS(200, "操作成功!!"),
+    SYSTEM_ERROR(10000, "系统异常"),
+    PARAM_ERROR(10001, "请求参数错误"),
+    BIZ_ERROR(10002, "业务异常"),
+    SYSTEM_BUSY_ERROR(10003, "系统繁忙，请稍后重试"),
+    ;
+
+    /**
+     * 响应code
+     */
+    private Integer status;
+    /**
+     * 响应message
+     */
+    private String message;
+
+    @Override
+    public String getClassSimpleName() {
+        return this.getDeclaringClass().getSimpleName();
+    }
+}
+
+```
+
+
+
+### 四、后端数据国际化
+
+### 五、生成前端、移动端语言包
 
 目的是辅助前端、移动端生成他们所需的语言包（如果他们需要的话），他们需要的语言包文件格式不一样：
 
@@ -70,15 +113,15 @@ baidu.translte.securityKey = ****************
 
 步骤：
 
-1. 下载多语言配置Excel
-2. 前端或移动端人员将需要国际化的字段维护到Excel中
-3. 将填写好的Excel上传到系统，写入数据库中
-4. 生成语言包，下载
+1. **下载多语言配置Excel**
+2. **前端或移动端人员将需要国际化的字段维护到Excel中**
+3. **将填写好的Excel上传到系统，写入数据库中**
+4. **生成语言包，下载**
 
 #### 3.1 下载多语言配置Excel
 
-地址：/language/downloadTemplate
-请求方式：GET
+- 地址：/language/downloadTemplate
+- 请求方式：get
 
 #### 3.2  前端或移动端人员将需要国际化的字段维护到Excel中
 
@@ -88,18 +131,16 @@ baidu.translte.securityKey = ****************
 
 #### 3.3  将填写好的Excel上传到系统，写入数据库中
 
-地址：/language/uploadTemplate
-请求方式：POST
-参数名：file
-
-<img src="/Users/sixj/Desktop/Idea_Project/multilingual-spring-boot-starter/README.assets/image-20200819193857956.png" alt="image-20200819193857956" style="zoom:50%;" />
+- 地址：/language/uploadTemplate
+- 请求方式：post
+- 参数名：file
 
 #### 3.4  生成语言包，下载
 
-地址：/language/downloadLangPackage?clientType=PC&languageType=en
-请求方式：GET
-参数：clientType，终端类型枚举：`PC`、`APP_IOS`、`APP-Android`、`UNI-APP`。
-参数：languageType，语言编码参照《语言编码对照表》
+- 地址：/language/downloadLangPackage?clientType=PC&languageType=en
+- 请求方式：GET
+- 参数：clientType，终端类型枚举：`PC`、`APP_IOS`、`APP-Android`、`UNI-APP`。
+- 参数：languageType，语言编码参照《语言编码对照表》
 
 
 
