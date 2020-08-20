@@ -38,27 +38,26 @@ CREATE TABLE `multilingual` (
 </dependency>
 ```
 
-#### 2.3 配置系统中需要支持的外语
+#### 2.3 系统配置
 
 目前系统支持108种语言，每种语言对应的编码参考下方《语言编码对照表》
 
 ```properties
 ### 这里配置了英语、法语，意大利语
 language.system.used = en,fra,it
-```
 
-#### 2.4 配置是否开启自动翻译
-
-```properties
 ### 是否开启自动翻译，默认关闭。如果开启自动翻译，必须配置appId与securityKey
 language.autoTranslate.enable = true
 ### 开启自动翻译的情况下，需要配置。需要去百度翻译开放平台申请账号
 ### 百度翻译开放平台地址：https://api.fanyi.baidu.com/product/11
 baidu.translate.appId = *************
 baidu.translte.securityKey = ****************
+
+### 异常枚举类所在的包路径,如果不配置会扫描所有类，影响启动时间，多个包可用逗号分割
+language.scanner.packages = com.sixj.multilingual.enums
 ```
 
-#### 2.5 请求头添加Language标示
+#### 2.4 请求头添加Language标示
 
 前端在请求接口的时候，需要在headers中添加一个语言标示，key为`Language`,value为《语言编码对照表》中的语言编码，后端才能根据语言标示，切换到相对应的语言返回给前端。如果不传的话，默认为中文（zh）。
 
@@ -110,11 +109,81 @@ private String test(){
 
 ```
 
-
-
 ### 四、后端数据国际化
 
+比如数据库中维护了新闻类别的数据，要求新闻类别支持国际化。下面以新闻类别为例
 
+#### 4.1 @MultiLanguage注解
+
+在新闻类别vo类上添加`@MultiLanguage`注解，在需要支持国际化的字段上也添加这个注解。
+
+例如：
+
+```java
+@MultiLanguage
+public class NoticeCategoryVO implements Serializable {
+    private Long id;
+
+    /** 栏目名称 */
+    @MultiLanguage
+    private String name;
+
+    /** 创建时间 */
+    private Date gmtCreate;
+
+    /** 更新时间 */
+    private Date gmtModified;
+
+    /** 是否删除 */
+    private Boolean deleted;
+}
+```
+
+#### 4.2 @MultiLanguageMethod注解
+
+在查询新闻类别列表的方法上，添加`@MultiLanguageMethod`注解。该插件会对添加了此注解的方法做切面，对返回结果做处理，将添加了`MultiLanguage`注解的属性值做国际化处理。
+
+例如：
+
+```java
+// 添加@MultiLanguageMethod注解，会对返回结果（NoticeCategoryVO）做处理，将添加了@MultiLanguage注解的属性值（name属性）做国际化处理。
+@MultiLanguageMethod
+public List<NoticeCategoryVO> listCategory() {
+  // 查询新闻类别列表
+}
+```
+
+#### 4.3 注解扩展
+
+##### 4.3.1  MultiDataGetter接口
+
+对于`@MultiLanguageMethod`注解，如果返回结果是简单的vo对象，或者是vo对象集合，该插件可以直接对返回结果进行遍历，获取到vo对象，并对vo对象做国际化处理，但是，如果返回结果不是这种简单类型，可能是一个Page对象，或者是一个Map，或者是更复杂的嵌套数据结构，那么该插件就获取不到需要国际化处理的vo对象。例如返回结果是一个分页对象：
+
+```java
+public IPage<NoticeCategoryVO> pageList(){
+  Page<NoticeCategoryVO> page = new Page<>(1,20);
+  // 查询新闻类别列表
+  // page.setRecords(noticeCategoryVos);
+  return page;
+}
+```
+
+为了解决这个问题，对于复杂的数据结构，可以实现`MultiDataGetter`接口，自定义获取到vo对象的方式，该插件会按照定义的方式获取vo对象，进行国际化处理。例如获取分页对象中的vo对象：
+
+```java
+public class MyPageDataGetter implements MultiDataGetter<IPage> {
+    @Override
+    public Object getData(IPage page) {
+        return page.getRecords();
+    }
+}
+```
+
+定义获取vo对象的方式之后，在`@MultiLanguageMethod`注解中加入自定义的获取数据的方式。
+
+```java
+@MultiLanguageMethod(multiDataGetter = MyPageDataGetter.class)
+```
 
 ### 五、生成前端、移动端语言包
 
@@ -157,21 +226,9 @@ private String test(){
 - 参数：clientType，终端类型枚举：`PC`、`APP_IOS`、`APP-Android`、`UNI-APP`。
 - 参数：languageType，语言编码参照《语言编码对照表》
 
+------
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+------
 
 《语言编码对照表》
 
