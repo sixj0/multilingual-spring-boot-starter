@@ -64,35 +64,48 @@ baidu.translte.securityKey = ****************
 
 ### 三、后端抛出的异常国际化
 
-3.1 异常枚举实现`AbstractLanguageRespEnum`接口
+#### 3.1 异常枚举加注解`@MultiLanguageEnum(fieldName = "message")`
+
+fieldName：需要进行国际化语言转换的字段名
 
 例如：
 
 ```java
-@Getter
-@AllArgsConstructor
-public enum RespStatusEnum implements AbstractLanguageRespEnum {
-
-    SUCCESS(200, "操作成功!!"),
+@MultiLanguageEnum(fieldName = "message")
+public enum RespStatusEnum{
+    SUCCESS(200, "操作成功"),
     SYSTEM_ERROR(10000, "系统异常"),
     PARAM_ERROR(10001, "请求参数错误"),
     BIZ_ERROR(10002, "业务异常"),
-    SYSTEM_BUSY_ERROR(10003, "系统繁忙，请稍后重试"),
-    ;
+  	;
 
-    /**
-     * 响应code
-     */
     private Integer status;
-    /**
-     * 响应message
-     */
     private String message;
+}
 
-    @Override
-    public String getClassSimpleName() {
-        return this.getDeclaringClass().getSimpleName();
-    }
+```
+
+#### 3.2 替换异常枚举中的异常信息
+
+该插件提供了一个转换异常枚举中异常信息的方法
+
+```java
+<T extends Enum> T getMultilingualEnum(T eEnum);
+```
+
+可以在统一异常处理器中，对捕获的异常进行转换。
+
+使用方法：
+
+```java
+
+@Autowired
+private MultilingualService multilingualService;
+
+private String test(){
+  // 转换异常，返回的异常信息会根据系统语言的类型进行转换
+  RespStatusEnum multilingualEnum = multilingualService.getMultilingualEnum(RespStatusEnum.SYSTEM_ERROR);
+  return multilingualEnum.getException();
 }
 
 ```
@@ -100,6 +113,8 @@ public enum RespStatusEnum implements AbstractLanguageRespEnum {
 
 
 ### 四、后端数据国际化
+
+
 
 ### 五、生成前端、移动端语言包
 
